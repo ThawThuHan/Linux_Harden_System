@@ -37,12 +37,22 @@ check_os() {
     fi
 }
 
+check_command() {
+    if [[ $? == 1 ]]; then
+        exit
+    fi
+}
+
 green() {
     echo -e "\033[0;32m$1\033[0m"
 }
 
 red() {
     echo -e "\033[0;31m$1\033[0m"
+}
+
+bg_blue() {
+    echo -e "\033[0;44m$1\033[0m"
 }
 
 # Function to check if a module is enabled in a PAM configuration file
@@ -69,6 +79,29 @@ if [[ $options ]]; then
         fi
     }
 
+    password_aging(){
+        if grep -q "^$2" "$1"; then
+            check_day() {
+                VALUE=$(grep -E "$2.*([0-9]+)" $1)
+                echo "Password expiration ($2) is set \"$(echo $VALUE | awk '{print $2}')\"."
+            }
+            if [[ $options == "apply" ]]; then
+                echo ""
+                check_day $1 $2
+                read -p "Would you like to Change $2(y|n)? " answer
+                if [[ $answer == "y" ]]; then
+                    read -p "$2 : " value
+                    sed -i "s|$VALUE|$2   $value|g" $1
+                    check_command
+                fi
+            else 
+                check_day $1 $2
+            fi
+        else
+            echo "Password expiration ($2) is NOT set."
+        fi
+    }
+
     # Function to check login.defs file for password expiration policies
     check_login_defs() {
         local defs_file="/etc/login.defs"
@@ -76,39 +109,23 @@ if [[ $options ]]; then
         echo "Checking password aging policy in $defs_file"
         echo "--------------------------------------------------------"
         sleep 2
-        if grep -q "^PASS_MAX_DAYS" "$defs_file"; then
-            PASS_MAX_DAYS=$(grep -E 'PASS_MAX_DAYS.*([0-9]+)' $defs_file | awk '{print $2}')
-            echo "Password expiration (PASS_MAX_DAYS) is set \"$PASS_MAX_DAYS\"."
-        else
-            echo "Password expiration (PASS_MAX_DAYS) is NOT set."
-        fi
-
-        if grep -q "^PASS_MIN_DAYS" "$defs_file"; then
-            PASS_MIN_DAYS=$(grep -E 'PASS_MIN_DAYS.*([0-9]+)' $defs_file | awk '{print $2}')
-            echo "Minimum days between password changes (PASS_MIN_DAYS) is set \"$PASS_MIN_DAYS\"."
-        else
-            echo "Minimum days between password changes (PASS_MIN_DAYS) is NOT set."
-        fi
-
-        if grep -q "^PASS_WARN_AGE" "$defs_file"; then
-            PASS_WARN_AGE=$(grep -E 'PASS_WARN_AGE.*([0-9]+)' $defs_file | awk '{print $2}')
-            echo "Password expiration warning (PASS_WARN_AGE) is set \"$PASS_WARN_AGE\"."
-        else
-            echo "Password expiration warning (PASS_WARN_AGE) is NOT set."
-        fi
+        
+        password_aging "$defs_file" "PASS_MAX_DAYS"
+        password_aging "$defs_file" "PASS_MIN_DAYS"
+        password_aging "$defs_file" "PASS_WARN_AGE"
     }
 
     # Main script logic
-    echo -e "Password Policy Checking....!!!\n"
+    bg_blue "Password Policy Checking....!!!"
     # Check common-password or system-auth based on distro
     if [ -f /etc/pam.d/common-password ]; then
         check_pam_policy "/etc/pam.d/common-password"
         if [[ $options == "apply" && ($pam_pwhistory == 0 || $pam_pwquality == 0) ]]; then
             read -p "Would you like to apply password policy module (y|n)? " answer
             if [[ $pam_pwquality == 0 && $answer == 'y' ]]; then
-                    apt update
-                    apt install libpam-pwquality -y
-                    grep "pam_pwquality" /etc/pam.d/common-password || echo -e "password\trequisite\t\t\tpam_pwquality.so retry=3 enforce=1" >>/etc/pam.d/common-password
+                apt update
+                apt install libpam-pwquality -y
+                grep "pam_pwquality" /etc/pam.d/common-password || echo -e "password\trequisite\t\t\tpam_pwquality.so retry=3 enforce=1" >>/etc/pam.d/common-password
             elif [[ $pam_pwhistory == 0 && $answer == 'y' ]]; then
                 grep "pam_pwhistory" /etc/pam.d/common-password || echo -e "password\trequisite\t\t\tpam_pwhistory.so remember=3" >>/etc/pam.d/common-password
                 check_pam_policy "/etc/pam.d/common-password"
@@ -146,10 +163,9 @@ if [[ $options ]]; then
     echo "==============================================="
     sleep 1
     echo ""
-    echo -e "SSH Security Best Practice Check...!!!"
+    bg_blue "SSH Security Best Practice Check...!!!"
     check_ssh_config() {
         local sshd_config=$1
-        echo ""
         echo "Checking SSH Configuration in $1"
         echo "-------------------------------------------"
         sleep 2
@@ -170,8 +186,7 @@ if [[ $options ]]; then
     echo "SSH Security Best Practice check completed."
     echo "==============================================="
     echo ""
-    echo -e "Firewall Status Check...!!!"
-    echo ""
+    bg_blue "Firewall Status Check...!!!"
 
     function check_ufw {
         if [[ -x /usr/sbin/ufw ]]; then
@@ -205,4 +220,3 @@ if [[ $options ]]; then
     }
     check_firewall_on
 fi
-    
