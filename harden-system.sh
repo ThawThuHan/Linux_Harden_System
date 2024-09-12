@@ -67,14 +67,14 @@ if [[ $options ]]; then
             green "Password complexity module (pam_pwquality) is configured."
             pam_pwquality=1
         else
-            echo "Password complexity module (pam_pwquality) is NOT configured."
+            red "Password complexity module (pam_pwquality) is NOT configured."
             pam_pwquality=0
         fi
         if grep -q "pam_pwhistory.so" "$pam_file"; then
             green "Password complexity module (pam_pwhistory) is configured."
             pam_pwhistory=1
         else
-            echo "Password complexity module (pam_pwhistory) is NOT configured."
+            red "Password complexity module (pam_pwhistory) is NOT configured."
             pam_pwhistory=0
         fi
     }
@@ -101,7 +101,7 @@ if [[ $options ]]; then
             echo "Password expiration ($2) is NOT set."
         fi
     }
-
+ 
     # Function to check login.defs file for password expiration policies
     check_login_defs() {
         local defs_file="/etc/login.defs"
@@ -120,25 +120,34 @@ if [[ $options ]]; then
     # Check common-password or system-auth based on distro
     if [ -f /etc/pam.d/common-password ]; then
         check_pam_policy "/etc/pam.d/common-password"
-        if [[ $options == "apply" && ($pam_pwhistory == 0 || $pam_pwquality == 0) ]]; then
-            read -p "Would you like to apply password policy module (y|n)? " answer
-            if [[ $pam_pwquality == 0 && $answer == 'y' ]]; then
-                apt update
-                apt install libpam-pwquality -y
-                grep "pam_pwquality" /etc/pam.d/common-password || echo -e "password\trequisite\t\t\tpam_pwquality.so retry=3 enforce=1" >>/etc/pam.d/common-password
-            elif [[ $pam_pwhistory == 0 && $answer == 'y' ]]; then
-                grep "pam_pwhistory" /etc/pam.d/common-password || echo -e "password\trequisite\t\t\tpam_pwhistory.so remember=3" >>/etc/pam.d/common-password
+        if [[ $options == "apply" ]]; then
+            if [[ $pam_pwhistory == 0 || $pam_pwquality == 0 ]]; then
+                read -p "Would you like to apply password policy module (y|n)? " answer
+                if [[ $answer == 'y' && $pam_pwquality == 0 ]]; then
+                    apt update
+                    apt install libpam-pwquality -y
+                    grep "pam_pwquality" /etc/pam.d/common-password || echo -e "password\trequisite\t\t\tpam_pwquality.so retry=3 enforce=1" >>/etc/pam.d/common-password
+                fi
+                if [[ $answer == 'y' && $pam_pwhistory == 0 ]]; then
+                    grep "pam_pwhistory" /etc/pam.d/common-password || echo -e "password\trequisite\t\t\tpam_pwhistory.so enforce=1" >>/etc/pam.d/common-password
+                fi
                 check_pam_policy "/etc/pam.d/common-password"
             fi
         fi
     elif [ -f /etc/pam.d/system-auth ]; then
         check_pam_policy "/etc/pam.d/system-auth"
-        if [[ $options == "apply" && $pam_pwquality == 0 ]]; then
-            read -p "Would you like to apply password policy module (y|n)? " answer
-            if [[ $answer == 'y' ]]; then
-                dnf update
-                dnf install libpwquality
-                grep "pam_pwquality" /etc/pam.d/system-auth || echo -e "password\trequisite\t\t\tpam_pwquality.so retry=3 enforce=1" >>/etc/pam.d/system-auth
+        if [[ $options == "apply" ]]; then
+            if [[ $pam_pwhistory == 0 || $pam_pwquality == 0 ]]; then
+                read -p "Would you like to apply password policy module (y|n)? " answer
+                if [[ $answer == 'y' && $pam_pwquality == 0 ]]; then
+                    dnf update -y
+                    dnf install libpwquality -y
+                    grep "pam_pwquality" /etc/pam.d/system-auth || echo -e "password\trequisite\t\t\tpam_pwquality.so retry=3 enforce=1" >>/etc/pam.d/system-auth
+                fi
+                if [[ $answer == 'y' && $pam_pwhistory == 0 ]]; then
+                    grep "pam_pwhistory" /etc/pam.d/system-auth || echo -e "password\trequisite\t\t\tpam_pwhistory.so enforce=1" >>/etc/pam.d/system-auth
+                fi
+                check_pam_policy "/etc/pam.d/system-auth"
             fi
         fi
     else
@@ -148,19 +157,71 @@ if [[ $options ]]; then
     # Check /etc/login.defs for aging policies
     check_login_defs
 
+    check_user_input() {
+        if [[ !($1 =~ ^[0-9]+$) ]]; then
+            echo "please type number only!"
+            exit 1
+        fi
+    }
+
+    apply_pw_config() {
+        value=$(grep -E "^$1" /etc/security/pwquality.conf || echo "$1 = $2" >> /etc/security/pwquality.conf)
+        if [[ $value ]]; then
+            sed -i "s|$value|$1 = $2|g" /etc/security/pwquality.conf
+        fi
+    }
+
     # Check for pwquality.conf (optional, depending on the system)
+    echo ""
+    echo "Checking password quality settings in /etc/security/pwquality.conf"
+    echo "------------------------------------------------------------------"
     if [ -f /etc/security/pwquality.conf ]; then
-        echo ""
-        echo "Checking password quality settings in /etc/security/pwquality.conf"
-        echo "------------------------------------------------------------------"
         sleep 2
-        grep -E "^minlen|^dcredit|^ucredit|^lcredit|^ocredit" /etc/security/pwquality.conf
+        grep -E "^minlen|^dcredit|^ucredit|^lcredit|^ocredit" /etc/security/pwquality.conf \
+        || red "there is no configuration found in /etc/security/pwquality.conf."
     else
-        echo "/etc/security/pwquality.conf file not found."
+        red "/etc/security/pwquality.conf file not found."
+    fi
+    if [ -f /etc/security/pwhistory.conf ]; then
+        sleep 2
+        grep -E "^remember" /etc/security/pwhistory.conf \
+        || red "there is no configuration found in /etc/security/pwhistory.conf."
+    else
+        red "/etc/security/pwhistory.conf file not found."
+    fi
+    if [[ $options == 'apply' ]]; then
+        echo $pam_pwhistory_config
+        read -p "Would you like to define password criteira (y/n)?  " answer
+        if [[ $answer == "y" ]]; then
+            read -p "Minimun Length of password : " minlen
+            check_user_input $minlen
+            apply_pw_config minlen $minlen
+
+            read -p "Minimun number of lowercase : " lcredit
+            check_user_input $lcredit
+            apply_pw_config lcredit "-$lcredit"
+
+            read -p "Minimun number of uppercase : " ucredit
+            check_user_input $ucredit
+            apply_pw_config ucredit "-$ucredit"
+
+            read -p "Minimun number of special : " ocredit
+            check_user_input $ocredit
+            apply_pw_config ocredit "-$ocredit"
+
+            read -p "Minimun number of special : " ocredit
+            check_user_input $ocredit
+            apply_pw_config ocredit "-$ocredit"
+
+            read -p "Enforce for Root (y/n)? " efr
+            if [[ $efr == "y" ]]; then
+                grep -E "# enforce_for_root" /etc/security/pwquality.conf \
+                && sed -i "s|# enforce_for_root|enforce_for_root|g" /etc/security/pwquality.conf
+            fi
+        fi
     fi
     echo ""
-    echo "Password policy check completed."
-    echo "==============================================="
+    echo "Password policy check completed........"
     sleep 1
     echo ""
     bg_blue "SSH Security Best Practice Check...!!!"
@@ -183,8 +244,7 @@ if [[ $options ]]; then
     check_ssh_config /etc/ssh/sshd_config
 
     echo ""
-    echo "SSH Security Best Practice check completed."
-    echo "==============================================="
+    echo "SSH Security Best Practice check completed......."
     echo ""
     bg_blue "Firewall Status Check...!!!"
 
@@ -219,4 +279,6 @@ if [[ $options ]]; then
         check_os check_ufw check_firewalld
     }
     check_firewall_on
+    echo ""
+    echo "Firewall status check completed......."
 fi
