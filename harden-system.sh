@@ -82,16 +82,17 @@ if [[ $options ]]; then
     password_aging(){
         if grep -q "^$2" "$1"; then
             check_day() {
-                VALUE=$(grep -E "$2.*([0-9]+)" $1)
-                echo "Password expiration ($2) is set \"$(echo $VALUE | awk '{print $2}')\"."
+                VALUE=$(grep -E "$2.*([0-9]+)" $1 | awk '{print $2}')
+                echo "Password expiration ($2) is set \"$VALUE\"."
             }
             if [[ $options == "apply" ]]; then
                 echo ""
                 check_day $1 $2
                 read -p "Would you like to Change $2(y|n)? " answer
                 if [[ $answer == "y" ]]; then
-                    read -p "$2 : " value
-                    sed -i "s|$VALUE|$2   $value|g" $1
+                    read -p "$2 : " u_value
+                    sed -i "s|$2\t$VALUE|$2   $VALUE|g" $1
+                    sed -i "s|$2   $VALUE|$2   $u_value|g" $1
                     check_command
                 fi
             else 
@@ -192,6 +193,13 @@ if [[ $options ]]; then
         echo $pam_pwhistory_config
         read -p "Would you like to define password criteira (y/n)?  " answer
         if [[ $answer == "y" ]]; then
+            read -p "number of password to remember : " remember
+            check_user_input $remember
+            value=$(grep -E "^remember" /etc/security/pwhistory.conf || echo "remember = $remember" >> /etc/security/pwhistory.conf)
+            if [[ $value ]]; then
+                sed -i "s|$value|remember = $remember|g" /etc/security/pwhistory.conf
+            fi
+
             read -p "Minimun Length of password : " minlen
             check_user_input $minlen
             apply_pw_config minlen $minlen
@@ -284,7 +292,7 @@ if [[ $options ]]; then
 
     function check_firewalld {
         if [[ -x /usr/sbin/firewalld ]]; then
-            if firewalld-cmd --status | grep -q "active"; then
+            if firewall-cmd --state | grep -q "running"; then
                 green "firewalld is active."
             else
                 red "firewalld is inactive."
