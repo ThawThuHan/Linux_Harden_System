@@ -177,13 +177,12 @@ if [[ $options ]]; then
     echo "------------------------------------------------------------------"
     if [ -f /etc/security/pwquality.conf ]; then
         sleep 2
-        grep -E "^minlen|^dcredit|^ucredit|^lcredit|^ocredit" /etc/security/pwquality.conf \
+        grep -E "^minlen|^dcredit|^ucredit|^lcredit|^ocredit|^usercheck" /etc/security/pwquality.conf \
         || red "there is no configuration found in /etc/security/pwquality.conf."
     else
         red "/etc/security/pwquality.conf file not found."
     fi
     if [ -f /etc/security/pwhistory.conf ]; then
-        sleep 2
         grep -E "^remember" /etc/security/pwhistory.conf \
         || red "there is no configuration found in /etc/security/pwhistory.conf."
     else
@@ -209,9 +208,19 @@ if [[ $options ]]; then
             check_user_input $ocredit
             apply_pw_config ocredit "-$ocredit"
 
-            read -p "Minimun number of special : " ocredit
-            check_user_input $ocredit
-            apply_pw_config ocredit "-$ocredit"
+            read -p "Minimun number of digit : " dcredit
+            check_user_input $dcredit
+            apply_pw_config dcredit "-$dcredit"
+
+            read -p "Minimun number of character differ from old pw : " difok
+            check_user_input $difok
+            apply_pw_config dcredit "$difok"
+
+            read -p "Don't allow to include username in password (y/n)? " usercheck
+            if [[ $usercheck == "y" ]]; then
+                grep -E "^usercheck = 1" /etc/security/pwquality.conf \
+                || echo "usercheck = 1" >> /etc/security/pwquality.conf
+            fi
 
             read -p "Enforce for Root (y/n)? " efr
             if [[ $efr == "y" ]]; then
@@ -251,24 +260,50 @@ if [[ $options ]]; then
     function check_ufw {
         if [[ -x /usr/sbin/ufw ]]; then
             if ufw status | grep -q "Status: active"; then
-                echo "ufw is active."
+                green "ufw is active."
             else
                 red "ufw is inactive."
+                if [[ $option == "apply" ]]; then
+                    read -p "Would you like to enable ufw firewall (y/n)? " answer
+                    if [[ $answer == 'y' ]]; then
+                        ufw enable
+                    fi
+                fi
             fi
         else
             echo "ufw is not installed."
+            if [[ $option == "apply" ]]; then
+                read -p "Would you like to enable ufw firewall (y/n)? " answer
+                if [[ $answer == 'y' ]]; then
+                    apt install ufw
+                    ufw enable
+                fi
+            fi
         fi
     }
 
     function check_firewalld {
         if [[ -x /usr/sbin/firewalld ]]; then
             if firewalld-cmd --status | grep -q "active"; then
-                echo "firewalld is active."
+                green "firewalld is active."
             else
-                echo "firewalld is inactive."
+                red "firewalld is inactive."
+                if [[ $option == "apply" ]]; then
+                    read -p "Would you like to enable firewalld (y/n)? " answer
+                    if [[ $answer == 'y' ]]; then
+                        systemctl enable --now firewalld
+                    fi
+                fi
             fi
         else
             echo "firewalld is not installed."
+            if [[ $option == "apply" ]]; then
+                read -p "Would you like to enable firewalld (y/n)? " answer
+                if [[ $answer == 'y' ]]; then
+                    dnf install firewalld
+                    systemctl enable --now firewalld
+                fi
+            fi
         fi
     }
 
