@@ -36,22 +36,28 @@ This repository contains a shell script designed to evaluate and enhance the sec
 3. **Make the Script Executable**:
 
     ```bash
-    chmod +x check_security.sh
+    chmod +x harden-system.sh
     ```
 
 4. **Run the Script**:
 
     ```bash
-    sudo ./check_security.sh
+    sudo ./harden-system.sh -h
     ```
 
 ## Script Details
 
-- `check_security.sh`: The main script file that performs the security checks described above.
+- `harden-system.sh`: The main script file that performs the security checks described above.
+
+  ![image](https://github.com/user-attachments/assets/8975937b-726f-4d5c-b704-1edb8bae4829)
+
 
 ## Example Output
 
 Running the script will provide output indicating whether the system meets the specified security best practices. The results are presented in a readable format, detailing which aspects are compliant or require attention.
+
+<img width="357" alt="Capture" src="https://github.com/user-attachments/assets/8c8ed89f-823a-4d9a-ad5e-5e413a4c9770">
+
 
 ## Contributing
 
@@ -63,4 +69,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Author
 
-[Your Name](https://github.com/ThawThuHan)
+[Thaw Thu Han](https://github.com/ThawThuHan)
